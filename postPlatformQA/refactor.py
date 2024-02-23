@@ -29,7 +29,7 @@ from prompt_helper import template
 # metadata?
 
 load_dotenv()
-docs_path = "C:\\Users\\aegor\\Documents\\proj\\askPostplatforms\\hackathon_27012024\\postPlatformQA\\docs_cut.pdf"
+docs_path = "docs_cut.pdf"
 docs_test_path = "pdf_one_pager.pdf"
 
 embeddings  = OpenAIEmbeddings()
