@@ -1,9 +1,6 @@
 import streamlit as st
 import refactor as ref
 import textwrap
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 st.set_page_config(initial_sidebar_state="expanded")
 docs_path = ref.docs_path

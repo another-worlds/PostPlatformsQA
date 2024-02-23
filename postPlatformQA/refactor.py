@@ -12,7 +12,7 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
 from langchain.agents import create_openai_functions_agent
 from langchain.agents import AgentExecutor
-import chromadb
+import sys
 
 import os
 
@@ -48,6 +48,8 @@ metadata_field_info = [
 ]
 
 def docs_to_chroma(docs:str):
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
     loader = PyPDFLoader(file_path=docs_path)
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
