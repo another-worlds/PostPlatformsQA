@@ -27,10 +27,23 @@ from prompt_helper import template
 # ParentDocumentRetriever - cascade split chunks
 # metadata?
 
+environment = "server"
+server_prefix = 'postPlatformQA'
+
+docs_path = 'docs_cut.pdf'
+docs_test_path = "pdf_one_pager.pdf"
+db_path = "chroma.db"
+
+if environment == "server":
+    for path in [docs_path, docs_test_path, db_path]:
+        path = '/'.join([server_prefix, path])
+
+
 load_dotenv()
 dir = os.getcwd()
-docs_path = os.path.join(dir, "postPlatformQA/docs_cut.pdf")
-docs_test_path = os.path.join("postPlatformQA/pdf_one_pager.pdf")
+docs_path = os.path.join(dir, docs_path)
+docs_test_path = os.path.join(docs_test_path)
+print(docs_path)
 
 embeddings  = OpenAIEmbeddings()
 
@@ -56,9 +69,9 @@ def docs_to_chroma(docs:str):
         chunk_overlap=200
     )
     docs = splitter.split_documents(loader.load())
-    if not os.path.exists(os.path.join(dir, "./chroma.db")):
-        db = Chroma.from_documents(docs, OpenAIEmbeddings(),persist_directory='./chroma.db')
-    else: db = Chroma(persist_directory="./chroma.db", embedding_function=OpenAIEmbeddings())
+    if not os.path.exists(os.path.join(dir, db_path)):
+        db = Chroma.from_documents(docs, OpenAIEmbeddings(),persist_directory=db_path)
+    else: db = Chroma(persist_directory=db_path, embedding_function=OpenAIEmbeddings())
     return db
 
     

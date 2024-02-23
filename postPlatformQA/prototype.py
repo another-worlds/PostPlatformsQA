@@ -3,7 +3,6 @@ import refactor as ref
 import textwrap
 
 st.set_page_config(initial_sidebar_state="expanded")
-docs_path = ref.docs_path
 
 
 st.title("Postplatforms QA")
