@@ -167,6 +167,7 @@ ENTERING CHAIN
 #
 
 if __name__ == "__main__":
+    print("ENTERING DEBUG MODE")
     mode = 'prod'
     mode = 'agent'
     if mode == 'test':
