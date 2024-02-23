@@ -6,7 +6,7 @@ from langchain.chains import StuffDocumentsChain, LLMChain
 from langchain.chains.query_constructor.schema import AttributeInfo
 from langchain.agents import initialize_agent
 from langchain.agents import AgentType
-from langchain_openai import OpenAI, OpenAIEmbeddings
+from langchain_openai import OpenAI, ChatOpenAI, OpenAIEmbeddings
 from langchain.retrievers import SelfQueryRetriever
 from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
@@ -33,6 +33,19 @@ docs_path = "C:\\Users\\aegor\\Documents\\proj\\askPostplatforms\\hackathon_2701
 docs_test_path = "pdf_one_pager.pdf"
 
 embeddings  = OpenAIEmbeddings()
+
+metadata_field_info = [
+    AttributeInfo(
+        name="page_content",
+        description="The fragment from the postplatforms whitepaper",
+        type='string'
+    ),
+    AttributeInfo(
+        name="page_number",
+        description="The number of the page the fragment sources from",
+        type='integer'
+    )
+]
 
 def docs_to_chroma(docs:str):
     loader = PyPDFLoader(file_path=docs_path)
@@ -82,19 +95,44 @@ def db_to_retrieval_chain(db: FAISS, query:str, k:int = 6):# -> LLMChain:
     chain = prompt_template | llm
     return chain.invoke({"input":query, "context":context})
 
-
-metadata_field_info = [
-    AttributeInfo(
-        name="page_content",
-        description="The fragment from the postplatforms whitepaper",
-        type='string'
-    ),
-    AttributeInfo(
-        name="page_number",
-        description="The number of the page the fragment sources from",
-        type='integer'
+def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
+    chat = ChatOpenAI(temperature=0.5)
+    
+    retriever = SelfQueryRetriever.from_llm(
+        llm=chat,
+        vectorstore=db,
+        document_contents="Fragments from the postplatforms project.",
+        metadata_field_info=metadata_field_info,
     )
-]
+    
+    
+    tool = create_retriever_tool(
+        retriever=retriever,
+        name="postplatforms_docs_search",
+        description="Postplatforms whitepaper search tool to extract relevant context"
+    )
+    tools = [tool]
+
+    prompt = hub.pull("hwchase17/openai-functions-agent")
+    prompt.messages[0].prompt.template=template
+    
+    agent = create_openai_functions_agent(
+        llm=chat,
+        prompt=prompt,
+        tools=tools
+    )
+    
+    agent_executor = AgentExecutor(agent=agent,tools=tools,verbose=True)
+    
+    docs = retriever.invoke(query)
+    context = format_context(docs)
+    answer = agent_executor.invoke({"input":query, "context":context})
+    
+    return answer['output']
+    
+
+
+
 
 mode = 'prod'
 mode = 'agent'
@@ -121,20 +159,19 @@ if __name__ == "__main__":
             answer = db_to_retrieval_chain(db, user_input)
             print(answer)
         elif mode == 'selfQuery' or 'agent':    
-            llm = OpenAI(temperature=0.1)     
+            llm = ChatOpenAI(temperature=0.1)     
             retriever = SelfQueryRetriever.from_llm(
                 llm =llm,
                 vectorstore = db,
                 document_contents = "Fragments from the postplatforms project.",
                 metadata_field_info=metadata_field_info,
-                verbose=True
             )
             docs = retriever.invoke(user_input)
 
             if mode =='agent':
                 tool = create_retriever_tool(
                     retriever=retriever,
-                    name='Postplatforms docs search',
+                    name='postplatforms_docs_search',
                     description='Postplatforms whitepaper search tool to extract relevant context')
                 tools = [tool]
                 prompt = hub.pull("hwchase17/openai-functions-agent")
@@ -144,7 +181,7 @@ if __name__ == "__main__":
                 #agent_executor.invoke({"input": user_input, "context":format_context(docs)})
     
                 answer = agent_executor.invoke({"input": "How are postplatforms better than blockchain", "context":format_context(docs)})
-                print(answer)
+                print(answer['output'])
             elif mode =='selfQuery':
                 prompt_template = PromptTemplate.from_template(template)
                 chain = prompt_template | llm

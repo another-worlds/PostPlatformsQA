@@ -17,8 +17,16 @@ with st.sidebar:
         
         submit_button = st.form_submit_button(label="Submit")
         
-if question:
+#mode = 'prod'
+mode = 'test'
+
+if mode == 'test':
+    db = ref.docs_to_chroma(docs_path)
+    response = ref.db_to_agent_chain(db, question)
+elif mode == 'prod':
     db = ref.docs_to_vectorDB(docs_path)
     response = ref.db_to_retrieval_chain(db, question)
+    
+if question:
     st.subheader("Answer:")
     st.text(textwrap.fill(response, width=80))
