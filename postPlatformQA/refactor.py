@@ -29,8 +29,8 @@ from prompt_helper import template
 
 load_dotenv()
 dir = os.getcwd()
-docs_path = os.path.join(dir, "docs_cut.pdf")
-docs_test_path = os.path.join("pdf_one_pager.pdf")
+docs_path = os.path.join(dir, "postPlatformQA/docs_cut.pdf")
+docs_test_path = os.path.join("postPlatformQA/pdf_one_pager.pdf")
 
 embeddings  = OpenAIEmbeddings()
 
