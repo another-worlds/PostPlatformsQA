@@ -17,7 +17,10 @@ cachetools==5.3.2
 certifi==2023.11.17
 charset-normalizer==3.3.2
 chroma-hnswlib==0.7.3
-chromadb==0.4.23
+#chromadb==0.4.23
+#fastapi==0.109.2
+chromadb==0.3.29
+fastapi==0.85.1
 click==8.1.7
 colorama==0.4.6
 coloredlogs==15.0.1
@@ -30,7 +33,6 @@ distro==1.9.0
 docker==7.0.0
 exceptiongroup==1.2.0
 faiss-cpu==1.7.4
-fastapi==0.109.2
 filelock==3.13.1
 FLAML==2.1.1
 flatbuffers==23.5.26
@@ -170,6 +172,4 @@ wikipedia==1.4.0
 wrapt==1.16.0
 xxhash==3.4.1
 yarl==1.9.4
-yfinance==0.2.35
-youtube-transcript-api==0.6.2
 zipp==3.17.0
