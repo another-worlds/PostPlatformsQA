@@ -27,23 +27,7 @@ from prompt_helper import template
 # ParentDocumentRetriever - cascade split chunks
 # metadata?
 
-environment = "server"
-server_prefix = 'postPlatformQA'
-
-docs_path = 'docs_cut.pdf'
-docs_test_path = "pdf_one_pager.pdf"
-db_path = "chroma.db"
-
-if environment == "server":
-    for path in [docs_path, docs_test_path, db_path]:
-        path = '/'.join([server_prefix, path])
-
-
 load_dotenv()
-dir = os.getcwd()
-docs_path = os.path.join(dir, docs_path)
-docs_test_path = os.path.join(docs_test_path)
-print(docs_path)
 
 embeddings  = OpenAIEmbeddings()
 
@@ -60,7 +44,24 @@ metadata_field_info = [
     )
 ]
 
-def docs_to_chroma(docs:str):
+def docs_to_chroma():
+    environment = "server"
+    server_prefix = 'postPlatformQA'
+
+    docs_path = 'docs_cut.pdf'
+    docs_test_path = "pdf_one_pager.pdf"
+    db_path = "chroma.db"
+
+    if environment == "server":
+        for path in [docs_path, docs_test_path, db_path]:
+            path = '/'.join([server_prefix, path])
+
+    
+    dir = os.getcwd()
+    docs_path = os.path.join(dir, docs_path)
+    docs_test_path = os.path.join(docs_test_path)
+    print(docs_path)
+    print(db_path)
     __import__('pysqlite3')
     sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
     loader = PyPDFLoader(file_path=docs_path)
@@ -171,9 +172,9 @@ if __name__ == "__main__":
     mode = 'prod'
     mode = 'agent'
     if mode == 'test':
-        db = docs_to_vectorDB(docs_path) 
+        db = docs_to_vectorDB() 
     elif mode == 'selfQuery' or 'agent':
-        db = docs_to_chroma(docs_path)
+        db = docs_to_chroma()
     
     while True:
         user_input = input()
