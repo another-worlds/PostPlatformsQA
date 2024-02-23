@@ -12,6 +12,7 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
 from langchain.agents import create_openai_functions_agent
 from langchain.agents import AgentExecutor
+import chromadb
 
 import os
 
@@ -53,8 +54,14 @@ def docs_to_chroma(docs:str):
         chunk_overlap=200
     )
     docs = splitter.split_documents(loader.load())
-    db = Chroma.from_documents(docs, OpenAIEmbeddings())
+    if not os.path.exists(os.path.join(dir, "./chroma.db")):
+        db = Chroma.from_documents(docs, OpenAIEmbeddings(),persist_directory='./chroma.db')
+    else: db = Chroma(persist_directory="./chroma.db", embedding_function=OpenAIEmbeddings())
     return db
+
+    
+
+
 
 def docs_to_vectorDB(docs: str) -> FAISS:
     loader = PyPDFLoader(docs_path)
@@ -133,12 +140,6 @@ def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
 
 
 
-mode = 'prod'
-mode = 'agent'
-if mode == 'test':
-    db = docs_to_vectorDB(docs_path) 
-elif mode == 'selfQuery' or 'agent':
-    db = docs_to_chroma(docs_path)
 
 
 print(
@@ -151,6 +152,12 @@ ENTERING CHAIN
 #
 
 if __name__ == "__main__":
+    mode = 'prod'
+    mode = 'agent'
+    if mode == 'test':
+        db = docs_to_vectorDB(docs_path) 
+    elif mode == 'selfQuery' or 'agent':
+        db = docs_to_chroma(docs_path)
     
     while True:
         user_input = input()
