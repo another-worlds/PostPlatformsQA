@@ -13,9 +13,7 @@ from langchain import hub
 from langchain.agents import create_openai_functions_agent
 from langchain.agents import AgentExecutor
 
-
-
-
+import os
 
 from langchain_community.vectorstores.chroma import Chroma
 
@@ -29,8 +27,9 @@ from prompt_helper import template
 # metadata?
 
 load_dotenv()
-docs_path = "docs_cut.pdf"
-docs_test_path = "pdf_one_pager.pdf"
+dir = os.getcwd()
+docs_path = os.path.join(dir, "docs_cut.pdf")
+docs_test_path = os.path.join("pdf_one_pager.pdf")
 
 embeddings  = OpenAIEmbeddings()
 
