@@ -6,7 +6,7 @@ the document you have access to.
 Your sole job is to provide user with answers based
 on the given fragments from the postplatforms documentation.
 
-Here's the query: {query}
+Here's the query: {input}
 
 Here's the relevant context:
 ***start of context***

@@ -10,6 +10,10 @@ from langchain_openai import OpenAI, OpenAIEmbeddings
 from langchain.retrievers import SelfQueryRetriever
 from langchain.tools.retriever import create_retriever_tool
 from langchain import hub
+from langchain.agents import create_openai_functions_agent
+from langchain.agents import AgentExecutor
+
+
 
 
 
@@ -25,13 +29,13 @@ from prompt_helper import template
 # metadata?
 
 load_dotenv()
-docs_path = "docs_cut.pdf"
+docs_path = "C:\\Users\\aegor\\Documents\\proj\\askPostplatforms\\hackathon_27012024\\postPlatformQA\\docs_cut.pdf"
 docs_test_path = "pdf_one_pager.pdf"
 
 embeddings  = OpenAIEmbeddings()
 
 def docs_to_chroma(docs:str):
-    loader = PyPDFLoader(docs_path)
+    loader = PyPDFLoader(file_path=docs_path)
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200
@@ -76,7 +80,7 @@ def db_to_retrieval_chain(db: FAISS, query:str, k:int = 6):# -> LLMChain:
     prompt_template = PromptTemplate.from_template(template)
     llm = OpenAI(temperature=0.1)
     chain = prompt_template | llm
-    return chain.invoke({"query":query, "context":context})
+    return chain.invoke({"input":query, "context":context})
 
 
 metadata_field_info = [
@@ -92,9 +96,10 @@ metadata_field_info = [
     )
 ]
 
+mode = 'prod'
 mode = 'agent'
 if mode == 'test':
-    db = docs_to_vectorDB(docs_path) #change to docs_path
+    db = docs_to_vectorDB(docs_path) 
 elif mode == 'selfQuery' or 'agent':
     db = docs_to_chroma(docs_path)
 
@@ -124,19 +129,24 @@ if __name__ == "__main__":
                 metadata_field_info=metadata_field_info,
                 verbose=True
             )
+            docs = retriever.invoke(user_input)
+
             if mode =='agent':
                 tool = create_retriever_tool(
-                    retriever,
-                    'Postplatforms docs search',
-                    'Postplatforms whitepaper search tool to extract relevant context')
+                    retriever=retriever,
+                    name='Postplatforms docs search',
+                    description='Postplatforms whitepaper search tool to extract relevant context')
                 tools = [tool]
-                # Get the prompt to use - you can modify this!
                 prompt = hub.pull("hwchase17/openai-functions-agent")
-                prompt.messages[0].template=template
-                print(prompt)
+                prompt.messages[0].prompt.template=template
+                agent = create_openai_functions_agent(llm=llm, tools=tools, prompt=prompt)
+                agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+                #agent_executor.invoke({"input": user_input, "context":format_context(docs)})
+    
+                answer = agent_executor.invoke({"input": "How are postplatforms better than blockchain", "context":format_context(docs)})
+                print(answer)
             elif mode =='selfQuery':
-                docs = retriever.invoke(user_input)
                 prompt_template = PromptTemplate.from_template(template)
                 chain = prompt_template | llm
-                answer = chain.invoke({"query":user_input, "context":format_context(docs)})
+                answer = chain.invoke({"input":user_input, "context":format_context(docs)})
                 print(answer)
