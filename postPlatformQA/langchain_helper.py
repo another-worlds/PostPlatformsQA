@@ -1,88 +1,213 @@
 from dotenv import load_dotenv
-from langchain_openai import OpenAI, OpenAIEmbeddings
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, SystemMessagePromptTemplate
+# t = SystemMessagePromptTemplate.from_template("rfrf")
+# print(t.prompt.template)
+from langchain.chains import StuffDocumentsChain, LLMChain
+from langchain.chains.query_constructor.schema import AttributeInfo
 from langchain.agents import initialize_agent
-from langchain.agents import load_tools
 from langchain.agents import AgentType
+from langchain_openai import OpenAI, ChatOpenAI, OpenAIEmbeddings
+from langchain.retrievers import SelfQueryRetriever
+from langchain.tools.retriever import create_retriever_tool
+from langchain import hub
+from langchain.agents import create_openai_functions_agent
+from langchain.agents import AgentExecutor
+import sys
 
-from langchain.document_loaders.youtube import YoutubeLoader
+import os
+
+from langchain_community.vectorstores.chroma import Chroma
+
+from langchain.document_loaders.pdf import  PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 
+from prompt_helper import template
+# markdown/sentence splitters
+# ParentDocumentRetriever - cascade split chunks
+# metadata?
+
 load_dotenv()
 
+embeddings  = OpenAIEmbeddings()
 
-
-def langchain_agent():
-    llm = OpenAI(temperature=0.7)
-    tools = load_tools(["wikipedia", "llm-math"], llm=llm)
-    
-    agent = initialize_agent(
-        tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True
+metadata_field_info = [
+    AttributeInfo(
+        name="page_content",
+        description="The fragment from the postplatforms whitepaper",
+        type='string'
+    ),
+    AttributeInfo(
+        name="page_number",
+        description="The number of the page the fragment sources from",
+        type='integer'
     )
-    
-    result = agent.run(
-        "What is the average height of a dog? Multiply it by average dog age."
-    )
-    
-    return result
+]
 
+def docs_to_chroma():
+    environment = "server"
+    server_prefix = 'postPlatformQA'
 
-embeddings = OpenAIEmbeddings()
+    docs_path = 'docs_cut.pdf'
+    docs_test_path = "pdf_one_pager.pdf"
+    db_path = "chroma.db"
 
-def youtube_to_vectorDB(url_string: str) -> FAISS:
-    loader = YoutubeLoader.from_youtube_url(url_string)
-    transcript = loader.load()
+    # if environment == "server":
+    #     for path in [docs_path, docs_test_path, db_path]:
+    #         path = '/'.join([server_prefix, path])
     
-    text_splitter = RecursiveCharacterTextSplitter(
+    dir = os.getcwd()
+    # docs_path = os.path.join(dir, docs_path)
+    # docs_test_path = os.path.join(docs_test_path)
+    docs_path = os.path.join(dir, server_prefix, docs_path)
+    db_path = os.path.join(dir, server_prefix, db_path)
+    #print(f"---------------------------{docs_path}")
+    #print(f"---------------------------{db_path}")
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+    loader = PyPDFLoader(file_path=docs_path)
+    splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
+        chunk_overlap=200
+    )
+    docs = splitter.split_documents(loader.load())
+    if not os.path.exists(os.path.join(dir, db_path)):
+        db = Chroma.from_documents(docs, OpenAIEmbeddings(),persist_directory=db_path)
+    else: db = Chroma(persist_directory=db_path, embedding_function=OpenAIEmbeddings())
+    return db
+
+    
+
+
+
+def docs_to_vectorDB(docs: str) -> FAISS:
+    loader = PyPDFLoader(docs_path)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=300,
         chunk_overlap=100
     )
-    
-    
-    docs = text_splitter.split_documents(transcript)
-    
+    docs = text_splitter.split_documents(loader.load())
     db = FAISS.from_documents(docs, embeddings)
     return db
 
-def get_reponse_from_query(db: FAISS, query: str, k: int=4) -> str:
+def format_context(docs):
+    context = []    
+    for doc in docs:
+        page_content = doc.page_content.replace("\n", " ")
+        page_number = doc.metadata.get('page')
+        context.append({"page_content": page_content,
+                        "page_number" : page_number})
     
-    similar_docs = db.similarity_search(query,k)
-    similar_docs_content = " ".join([d.page_content for d in similar_docs])
+    context = [str(entry) for entry in context]
+    formatted_context = "\n".join(context)
+    print( 
+f"""
+----------------------------------
+{formatted_context}
+----------------------------------
+""")
+    return formatted_context
+
+
+
+def db_to_retrieval_chain(db: FAISS, query:str, k:int = 6):# -> LLMChain:
+    docs = db.similarity_search(query,k)
+    context = format_context(docs)
+    prompt_template = PromptTemplate.from_template(template)
+    llm = OpenAI(temperature=0.1)
+    chain = prompt_template | llm
+    return chain.invoke({"input":query, "context":context})
+
+def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
+    chat = ChatOpenAI(temperature=0.5)
+    
+    retriever = SelfQueryRetriever.from_llm(
+        llm=chat,
+        vectorstore=db,
+        document_contents="Fragments from the postplatforms project.",
+        metadata_field_info=metadata_field_info,
+    )
     
     
-    prompt_template = PromptTemplate(
-        input_variables=[f"question", "similar_docs"],
-        template=
-        """
-        You are a helpful assistant for youtube.
-        
-        You must answer user's question about videos 
-        based on the information provided 
-        from the video transcript.
-        
-        Here is the question: {question}
-        
-        Here is the relevant video transcript: {docs}
-        
-        Only use information from the specific documents
-        assigned. If you feel you don't have enough relevant
-        information from the transcript, say 
-        "The video doesn't provide relevant context".
-        
-        Answer in 150 words.
-        
-        """
-        )
+    tool = create_retriever_tool(
+        retriever=retriever,
+        name="postplatforms_docs_search",
+        description="Postplatforms whitepaper search tool to extract relevant context"
+    )
+    tools = [tool]
+
+    prompt = hub.pull("hwchase17/openai-functions-agent")
+    prompt.messages[0].prompt.template=template
     
-    llm = OpenAI(temperature=0.7)
-    question_chain = LLMChain(llm=llm,prompt=prompt_template)
-    response = question_chain.run(
-        question=query,
-        docs=similar_docs_content)
+    agent = create_openai_functions_agent(
+        llm=chat,
+        prompt=prompt,
+        tools=tools
+    )
     
-    return response.replace("\n","")
+    agent_executor = AgentExecutor(agent=agent,tools=tools,verbose=True)
+    
+    docs = retriever.invoke(query)
+    context = format_context(docs)
+    answer = agent_executor.invoke({"input":query, "context":context})
+    
+    return answer['output']
+    
+
+
+
+
+
+
+print(
+"""
+----------------------------------
+ENTERING CHAIN
+----------------------------------
+""")
+
+#
 
 if __name__ == "__main__":
-    langchain_agent()
+    print("ENTERING DEBUG MODE")
+    mode = 'prod'
+    mode = 'agent'
+    if mode == 'test':
+        db = docs_to_vectorDB() 
+    elif mode == 'selfQuery' or 'agent':
+        db = docs_to_chroma()
+    
+    while True:
+        user_input = input()
+        if mode == 'test':
+            answer = db_to_retrieval_chain(db, user_input)
+            print(answer)
+        elif mode == 'selfQuery' or 'agent':    
+            llm = ChatOpenAI(temperature=0.1)     
+            retriever = SelfQueryRetriever.from_llm(
+                llm =llm,
+                vectorstore = db,
+                document_contents = "Fragments from the postplatforms project.",
+                metadata_field_info=metadata_field_info,
+            )
+            docs = retriever.invoke(user_input)
+
+            if mode =='agent':
+                tool = create_retriever_tool(
+                    retriever=retriever,
+                    name='postplatforms_docs_search',
+                    description='Postplatforms whitepaper search tool to extract relevant context')
+                tools = [tool]
+                prompt = hub.pull("hwchase17/openai-functions-agent")
+                prompt.messages[0].prompt.template=template
+                agent = create_openai_functions_agent(llm=llm, tools=tools, prompt=prompt)
+                agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+                #agent_executor.invoke({"input": user_input, "context":format_context(docs)})
+    
+                answer = agent_executor.invoke({"input": "How are postplatforms better than blockchain", "context":format_context(docs)})
+                print(answer['output'])
+            elif mode =='selfQuery':
+                prompt_template = PromptTemplate.from_template(template)
+                chain = prompt_template | llm
+                answer = chain.invoke({"input":user_input, "context":format_context(docs)})
+                print(answer)
