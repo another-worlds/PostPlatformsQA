@@ -52,14 +52,15 @@ def docs_to_chroma():
     docs_test_path = "pdf_one_pager.pdf"
     db_path = "chroma.db"
 
-    if environment == "server":
-        for path in [docs_path, docs_test_path, db_path]:
-            path = '/'.join([server_prefix, path])
-
+    # if environment == "server":
+    #     for path in [docs_path, docs_test_path, db_path]:
+    #         path = '/'.join([server_prefix, path])
     
     dir = os.getcwd()
-    docs_path = os.path.join(dir, docs_path)
-    docs_test_path = os.path.join(docs_test_path)
+    # docs_path = os.path.join(dir, docs_path)
+    # docs_test_path = os.path.join(docs_test_path)
+    docs_path = os.path.join(dir, server_prefix, docs_path)
+    db_path = os.path.join(dir, server_prefix, db_path)
     print(f"---------------------------{docs_path}")
     print(f"---------------------------{db_path}")
     __import__('pysqlite3')
