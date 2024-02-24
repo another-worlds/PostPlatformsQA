@@ -22,7 +22,7 @@ from langchain.document_loaders.pdf import  PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 
-from prompt_helper import template
+from prompt_helper import template_base, template_adv
 # markdown/sentence splitters
 # ParentDocumentRetriever - cascade split chunks
 # metadata?
@@ -44,23 +44,22 @@ metadata_field_info = [
     )
 ]
 
-def docs_to_chroma():
-    environment = "server"
-    server_prefix = 'postPlatformQA'
-
+def determine_docs_path(environment = "server"):
     docs_path = 'docs_cut.pdf'
     docs_test_path = "pdf_one_pager.pdf"
     db_path = "chroma.db"
-
-    # if environment == "server":
-    #     for path in [docs_path, docs_test_path, db_path]:
-    #         path = '/'.join([server_prefix, path])
-    
+        
+    for path in [docs_path, docs_test_path, db_path]:
+        path = '/'.join([ path])
     dir = os.getcwd()
-    # docs_path = os.path.join(dir, docs_path)
-    # docs_test_path = os.path.join(docs_test_path)
-    docs_path = os.path.join(dir, server_prefix, docs_path)
-    db_path = os.path.join(dir, server_prefix, db_path)
+    docs_path = os.path.join(dir, docs_path)
+    db_path = os.path.join(dir, db_path)
+    return docs_path, db_path
+
+def docs_to_chroma():
+    environment = "client"
+    docs_path, db_path = determine_docs_path(environment)
+
     #print(f"---------------------------{docs_path}")
     #print(f"---------------------------{db_path}")
     __import__('pysqlite3')
@@ -70,25 +69,13 @@ def docs_to_chroma():
         chunk_size=1000,
         chunk_overlap=200
     )
+    a = os.path.exists(os.path.join(os.getcwd(), db_path))
     docs = splitter.split_documents(loader.load())
-    if not os.path.exists(os.path.join(dir, db_path)):
+    if not os.path.exists(os.path.join(os.getcwd(), db_path)):
         db = Chroma.from_documents(docs, OpenAIEmbeddings(),persist_directory=db_path)
     else: db = Chroma(persist_directory=db_path, embedding_function=OpenAIEmbeddings())
     return db
 
-    
-
-
-
-def docs_to_vectorDB(docs: str) -> FAISS:
-    loader = PyPDFLoader(docs_path)
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=300,
-        chunk_overlap=100
-    )
-    docs = text_splitter.split_documents(loader.load())
-    db = FAISS.from_documents(docs, embeddings)
-    return db
 
 def format_context(docs):
     context = []    
@@ -109,17 +96,8 @@ f"""
     return formatted_context
 
 
-
-def db_to_retrieval_chain(db: FAISS, query:str, k:int = 6):# -> LLMChain:
-    docs = db.similarity_search(query,k)
-    context = format_context(docs)
-    prompt_template = PromptTemplate.from_template(template)
-    llm = OpenAI(temperature=0.1)
-    chain = prompt_template | llm
-    return chain.invoke({"input":query, "context":context})
-
 def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
-    chat = ChatOpenAI(temperature=0.5)
+    chat = ChatOpenAI(temperature=0.5, model_name="gpt-4")
     
     retriever = SelfQueryRetriever.from_llm(
         llm=chat,
@@ -137,7 +115,7 @@ def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
     tools = [tool]
 
     prompt = hub.pull("hwchase17/openai-functions-agent")
-    prompt.messages[0].prompt.template=template
+    #prompt.messages[0].prompt.template=template
     
     agent = create_openai_functions_agent(
         llm=chat,
@@ -152,6 +130,11 @@ def db_to_agent_chain(db: Chroma, query:str, k:int = 6):
     answer = agent_executor.invoke({"input":query, "context":context})
     
     return answer['output']
+
+def get_answer(agent: AgentExecutor, query, context) -> str:
+    answer = agent.invoke({"input":query, "context":context})
+    return answer['output']
+    
     
 
 
@@ -169,45 +152,8 @@ ENTERING CHAIN
 #
 
 if __name__ == "__main__":
-    print("ENTERING DEBUG MODE")
-    mode = 'prod'
-    mode = 'agent'
-    if mode == 'test':
-        db = docs_to_vectorDB() 
-    elif mode == 'selfQuery' or 'agent':
-        db = docs_to_chroma()
-    
     while True:
         user_input = input()
-        if mode == 'test':
-            answer = db_to_retrieval_chain(db, user_input)
-            print(answer)
-        elif mode == 'selfQuery' or 'agent':    
-            llm = ChatOpenAI(temperature=0.1)     
-            retriever = SelfQueryRetriever.from_llm(
-                llm =llm,
-                vectorstore = db,
-                document_contents = "Fragments from the postplatforms project.",
-                metadata_field_info=metadata_field_info,
-            )
-            docs = retriever.invoke(user_input)
-
-            if mode =='agent':
-                tool = create_retriever_tool(
-                    retriever=retriever,
-                    name='postplatforms_docs_search',
-                    description='Postplatforms whitepaper search tool to extract relevant context')
-                tools = [tool]
-                prompt = hub.pull("hwchase17/openai-functions-agent")
-                prompt.messages[0].prompt.template=template
-                agent = create_openai_functions_agent(llm=llm, tools=tools, prompt=prompt)
-                agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-                #agent_executor.invoke({"input": user_input, "context":format_context(docs)})
-    
-                answer = agent_executor.invoke({"input": "How are postplatforms better than blockchain", "context":format_context(docs)})
-                print(answer['output'])
-            elif mode =='selfQuery':
-                prompt_template = PromptTemplate.from_template(template)
-                chain = prompt_template | llm
-                answer = chain.invoke({"input":user_input, "context":format_context(docs)})
-                print(answer)
+        print("ENTERING DEBUG MODE")
+        db = docs_to_chroma()
+        print(db_to_agent_chain(db, query=user_input,k=3))
